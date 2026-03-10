@@ -28,6 +28,11 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	const maxMemory = 10 << 20
+	r.ParseMultipartForm(maxMemory)
+
+	fileData, headers, err := r.FormFile("thumbnail")
+	contentType := *headers.Get("Content-Type")
 
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
