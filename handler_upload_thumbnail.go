@@ -31,7 +31,8 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	const maxMemory = 10 << 20
 
-	if err = r.ParseMultipartForm(maxMemory); err != nil {
+	err = r.ParseMultipartForm(maxMemory)
+	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't parse multipartform", err)
 	}
 
