@@ -1,9 +1,14 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -40,12 +45,45 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't read FormFile", err)
 	}
+
 	contentType := headers.Header.Get("Content-Type")
 
-	imageData, err := io.ReadAll(fileData)
+	// imageData, err := io.ReadAll(fileData)
+	// if err != nil {
+	// 	respondWithError(w, http.StatusInternalServerError, "Couldn't read image data", err)
+	// }
+
+	fileExtension, err := mime.ExtensionsByType(contentType)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't read image data", err)
+		respondWithError(w, http.StatusInternalServerError, "Invalid mime type", err)
 	}
+
+	mediatype, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "couldn't parse mime type ", err)
+	}
+
+	if mediatype != "image/jpeg" && mediatype != "image/png" {
+		respondWithError(w, http.StatusInternalServerError, "upload must be image/jpeg or image/png", err)
+	}
+
+	randomBytes := make([]byte, 32)
+	rand.Read(randomBytes)
+
+	randomURLString := base64.RawURLEncoding.EncodeToString(randomBytes)
+
+	filePath := filepath.Join(cfg.assetsRoot, randomURLString+fileExtension[0])
+	file, err := os.Create(filePath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to create file in file system", err)
+	}
+
+	_, err = io.Copy(file, fileData)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to copy data to file", err)
+	}
+
+	imageDataURL := fmt.Sprintf("http://localhost:%s/assets/%s%s", cfg.port, randomURLString, fileExtension[0])
 
 	videoMetadata, err := cfg.db.GetVideo(videoID)
 
@@ -53,13 +91,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusUnauthorized, "User is not the owner of the video", err)
 	}
 
-	videoThumbnails[videoID] = thumbnail{
-		data:      imageData,
-		mediaType: contentType,
-	}
-
-	thumbnailURL := fmt.Sprintf("http://localhost:%s/api/thumbnails/%s", cfg.port, videoID)
-	videoMetadata.ThumbnailURL = &thumbnailURL
+	videoMetadata.ThumbnailURL = &imageDataURL
 
 	if err = cfg.db.UpdateVideo(videoMetadata); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to update video", err)
